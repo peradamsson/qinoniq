@@ -1,0 +1,10 @@
+{
+  "name": "qinoniq",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "maker.js",
+  "exports": {
+    ".": "./maker.js"
+  },
+  "files": ["maker.js"]
+}
