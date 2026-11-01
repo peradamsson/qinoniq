@@ -9,6 +9,14 @@ export function Maker(){
 	$.clear=_=>{
 		currentOwner.innerHTML=""
 	}
+	$.createRow=params=>{
+		params.flexDirection="row"
+		$.create(params)
+	}
+	$.createCol=params=>{
+		params.flexDirection="col"
+		$.create(params)
+	}
 	$.create=(params)=>{
 		if(Array.isArray(params)){
 			const arrOwner=currentOwner
@@ -19,11 +27,30 @@ export function Maker(){
 			return
 		}
 		let {tagName="div"}=params
-		const {owner,id,cl,text,html,data,width,height,transform}=params
+		let		{id,cl="",width,height,fg,bg,text}=params // can be set via sh(shorthand)
+		const {owner,html,data}=params
+		const {transform}=params
 		const {input,select}=params
 		const {style,draggable,contentEditable}=params
 		const {onmouseup,onkeyup,onkeydown,oninput,onchange}=params
-		const {caption}=params
+		const {caption,flexDirection="row"}=params
+		const {sh}=params
+		if(sh){ // shorthand string, example: "#id .class1 .class2 200x20 fg#f00 bg#fff $Text"
+			const shArr=sh.split(" ")
+			let arrClasses=[]
+			sh.forEach(shVal=>{
+				if(shVal.startsWith("#"))id=shVal // if multiple, last will be used
+				if(shVal.startsWith("."))arrClasses.push(shVal)
+				if(isTwoIntsSeparatedByX(shVal))[width,height]=shVal.split("x");
+				if(shVal.startsWith("fg"))fg=shVal.substr(2)
+				if(shVal.startsWith("bg"))bg=shVal.substr(2)
+				if(shVal.startsWith("$"))text=shVal.substr(1)
+			})
+			arrClasses.forEach(newClass=>{ // add classes to cl
+				if(cl.length>0)cl+=" "
+				cl+=newClass.substr(1)
+			})
+		}
 		if(owner)$.own(owner)
 		if(input)tagName="input"
 		if(select)tagName="select"
@@ -59,7 +86,9 @@ export function Maker(){
 			div.value=value
 			if(disabled)div.disabled=true
 		}
-		if(style)div.style=style // override css
+		if(style)div.style=style //Specific .style further down will override this...
+		if(fg)div.style.color=fg
+		if(bg)div.style.backgroundColor=bg
 		if(id)div.id=id
 		if(cl)cl.trim().split(" ").forEach(clName=>div.classList.add(clName))
 		if(text)div.textContent=text
@@ -75,6 +104,9 @@ export function Maker(){
 		if(height!==undefined)div.style.height=height+"px"
 		if(transform)div.style.transform=transform
 		if(draggable)div.draggable=1
+		div.style.display="flex"
+		const parsedFlexDirecton=flexDirection==="col"?"column":flexDirection
+		div.style.flexDirection=parsedFlexDirecton
 		if(caption){
 			const captionedDiv=getCaptionedDiv(div,caption,15)
 			currentOwner.appendChild(captionedDiv)
@@ -94,8 +126,19 @@ export function Maker(){
 		return dialog.show(params)
 	}
 	$.closeDialog=_=>{
+		dialog.getDialog().style.display="none"
 		dialog.getDialog().close(dialog.id)
 	}
+	const isTwoIntsSeparatedByX=(str)=>{
+		const parts = str.split("x")
+		if (parts.length !== 2) return false
+		const isIntString = s =>
+		s.length > 0 &&
+		[...s].every((ch, i) =>
+			(ch >= "0" && ch <= "9") || (i === 0 && ch === "-")
+		)
+		return isIntString(parts[0]) && isIntString(parts[1])
+	}	
 	const getCaptionedDiv=(div,caption,marginBottom)=>{
 		const captionBox=document.createElement("div")
 		captionBox.style=`display:flex;flex-direction:column;`
@@ -120,7 +163,7 @@ export function Maker(){
 			const{rows=[],btns={},afterSpawn}=params
 			document.getElementById(dialog.id)?.remove()	
 			dialog.id="dialogId_"+crypto.randomUUID()
-			$.create({owner:document.body,id:dialog.id,tagName:"dialog"})
+			$.createCol({owner:document.body,id:dialog.id,tagName:"dialog"})
 			rows.forEach(row=>{
 				$.own(dialog.getDialog())
 				$.create(row)
