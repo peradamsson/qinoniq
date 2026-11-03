@@ -1,0 +1,41 @@
+body {
+  min-height:100vh;
+  justify-content:center;
+  align-items:center;
+  font-family:arial;
+}
+header, main, footer {
+  width:100%;
+  max-width:800px; /* Adjust as needed */
+  box-sizing:border-box; /* Ensures padding/border don't break width */
+  background-color:#eef;
+}
+header, footer {
+  flex-shrink:0;
+  padding:10px;
+}
+header{
+  font-size:1.25rem;
+  font-weight:700;
+}
+footer{
+  color:#0004;
+  font-size:0.75rem;
+}
+main {
+  flex-grow:1;
+ 
+}
+.panel{
+  height:fit-content;
+}
+.btn{
+  cursor:pointer;
+  background-color:#666;
+  color:#fff;
+  padding:5px;
+  margin:5px;
+  font-size:0.75rem;
+  &:hover{background-color:#000;color:#fff}
+}
+

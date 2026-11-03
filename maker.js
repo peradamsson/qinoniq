@@ -1,6 +1,9 @@
+// TODO lift out dialog from maker
+// TODO make sure body mousemove event doesn't duplicate
+
 export function Maker(){
 	const $=this 
-	let currentOwner
+	let currentOwner=document.body // Initial owner
 	$.own=newOwner=>currentOwner=newOwner
 	$.createNew=(params)=>{
 		currentOwner.innerHTML=""
@@ -18,6 +21,18 @@ export function Maker(){
 		$.create(params)
 	}
 	$.create=(params)=>{
+		if(typeof params==="string"&&params.startsWith("boilerplate")){
+			const [_,headerText,footerText]=splitWithQuotes(params)
+			currentOwner.style="display:flex;flex-direction:column;margin:0;padding:0;"
+			$.create([
+				{tagName:"header",id:"header",text:trimQuotes(headerText)},
+				{tagName:"main",id:"main"},
+				{tagName:"footer",id:"footer",text:trimQuotes(footerText)},
+			])
+			return //console.log("Boilerplate inserted...")
+		}
+		let {sh}=params
+		if(typeof params==="string")sh=params
 		if(Array.isArray(params)){
 			const arrOwner=currentOwner
 			params.forEach(row=>{
@@ -26,32 +41,38 @@ export function Maker(){
 			})
 			return
 		}
-		let {tagName="div"}=params
-		let		{id,cl="",width,height,fg,bg,text}=params // can be set via sh(shorthand)
+		let  	{flexDirection="row",id,cl="",tagName="div"}=params // can be set via sh(shorthand)
+		let		{width,height,fg,bg,text}=params // can be set via sh(shorthand)
 		const {owner,html,data}=params
 		const {transform}=params
-		const {input,select}=params
+		const {input,select,multiCanvas}=params
 		const {style,draggable,contentEditable}=params
 		const {onmouseup,onkeyup,onkeydown,oninput,onchange}=params
-		const {caption,flexDirection="row"}=params
-		const {sh}=params
-		if(sh){ // shorthand string, example: "#id .class1 .class2 200x20 fg#f00 bg#fff $Text"
-			const shArr=sh.split(" ")
+		const {caption}=params
+		if(sh){ // shorthand string, example: "col <div> #id .class1 .class2 200x20 fg#f00 bg#fff $Text"
+			const shArr=splitWithQuotes(sh)
 			let arrClasses=[]
-			sh.forEach(shVal=>{
-				if(shVal.startsWith("#"))id=shVal // if multiple, last will be used
+			shArr.forEach(shVal=>{
+				if(shVal.startsWith("#"))id=shVal.substring(1) // if multiple, last will be used
 				if(shVal.startsWith("."))arrClasses.push(shVal)
 				if(isTwoIntsSeparatedByX(shVal))[width,height]=shVal.split("x");
-				if(shVal.startsWith("fg"))fg=shVal.substr(2)
-				if(shVal.startsWith("bg"))bg=shVal.substr(2)
-				if(shVal.startsWith("$"))text=shVal.substr(1)
+				if(shVal.startsWith("fg"))fg=shVal.substring(2)
+				if(shVal.startsWith("bg"))bg=shVal.substring(2)
+				if(shVal.startsWith("'")&&shVal.endsWith("'"))text=shVal.substring(1,shVal.length-1)
+				if(shVal==="row")flexDirection="row"
+				if(shVal==="col")flexDirection="col"
+				if(shVal.startsWith("<")&&shVal.endsWith(">"))tagName=shVal.substring(1,shVal.length-1)
 			})
 			arrClasses.forEach(newClass=>{ // add classes to cl
 				if(cl.length>0)cl+=" "
-				cl+=newClass.substr(1)
+				cl+=newClass.substring(1)
 			})
 		}
 		if(owner)$.own(owner)
+		if(!currentOwner){
+			console.log("No current owner for:",params)
+			return
+		}
 		if(input)tagName="input"
 		if(select)tagName="select"
 		const div=document.createElement(tagName)
@@ -110,8 +131,20 @@ export function Maker(){
 		if(caption){
 			const captionedDiv=getCaptionedDiv(div,caption,15)
 			currentOwner.appendChild(captionedDiv)
+		}else if(multiCanvas){
+			const canvasWidth=multiCanvas?.width??width??200
+			const canvasHeight=multiCanvas?.height??height??200
+			multiCanvas.width=canvasWidth
+			multiCanvas.height=canvasHeight
+			multiCanvas.id=id??"multiCanvasId"
+			const multiCanvasDiv=getMultiCanvasDiv(div,multiCanvas)
+			currentOwner.appendChild(multiCanvasDiv)
 		}else{
-			currentOwner.appendChild(div)
+			try{
+				currentOwner.appendChild(div)
+			}catch(e){
+				console.log(params)
+			}
 		}
 		if(Object.hasOwn(params,"subs")){
 			params.subs.forEach(sub=>{
@@ -120,6 +153,41 @@ export function Maker(){
 			})
 		}
 		if(contentEditable)div.contentEditable=true
+		return div
+	}
+	const getCaptionedDiv=(div,caption,marginBottom)=>{
+		const captionBox=document.createElement("div")
+		captionBox.style=`display:flex;flex-direction:column;`
+		const captionDiv=document.createElement("div")
+		captionDiv.textContent=caption
+		captionDiv.style="font-size:0.75rem;"
+		const marginBottomDiv=document.createElement("div")
+		marginBottomDiv.style=`margin-bottom:${marginBottom}px;`
+		captionBox.append(captionDiv,div,marginBottomDiv)
+		if(div.tagName==="INPUT"&&div.type==="range"){
+			div.addEventListener("input",e=>{
+				captionDiv.textContent=`${caption} ${e.currentTarget.value}`
+			})
+			div.dispatchEvent(new Event("input"))
+		}
+		return captionBox
+	}	
+	const getMultiCanvasDiv=(div,multiCanvas)=>{
+		const{width,height,translate=true,ids}=multiCanvas
+		div.style.width=width+"px"
+		div.style.height=height+"px"
+		ids.forEach(id=>{
+			const cv=document.createElement("canvas")
+			cv.id=id
+			cv.width=width
+			cv.height=height
+			cv.style.width=width+"px"
+			cv.style.height=height+"px"
+			cv.style.position="absolute"
+			div.style.position="relative"
+			if(translate)cv.getContext("2d").translate(cv.width/2,cv.height/2)
+			div.appendChild(cv)
+		})
 		return div
 	}
 	$.showDialog=params=>{
@@ -138,23 +206,34 @@ export function Maker(){
 			(ch >= "0" && ch <= "9") || (i === 0 && ch === "-")
 		)
 		return isIntString(parts[0]) && isIntString(parts[1])
-	}	
-	const getCaptionedDiv=(div,caption,marginBottom)=>{
-		const captionBox=document.createElement("div")
-		captionBox.style=`display:flex;flex-direction:column;`
-		const captionDiv=document.createElement("div")
-		captionDiv.textContent=caption
-		captionDiv.style="font-size:0.75rem;"
-		const marginBottomDiv=document.createElement("div")
-		marginBottomDiv.style=`margin-bottom:${marginBottom}px;`
-		captionBox.append(captionDiv,div,marginBottomDiv)
-		if(div.tagName==="INPUT"&&div.type==="range"){
-			div.addEventListener("input",e=>{
-				captionDiv.textContent=`${caption} ${e.currentTarget.value}`
-			})
-			div.dispatchEvent(new Event("input"))
-		}
-		return captionBox
+	}
+	const splitWithQuotes=(str)=>{
+    const result=[]
+    let current=''
+    let inQuotes=false
+    for (let i=0;i<str.length;i++){
+			const char=str[i]
+			if(char==="'"){
+				inQuotes=!inQuotes
+				current+=char
+			}else if(char===' '&&!inQuotes){
+				if(current){
+					result.push(current)
+				}
+				current=''
+			}else{
+				current+=char
+			}
+    }
+    if(current)result.push(current) // Last segment, if exists
+    return result
+	}
+	const trimQuotes=(str)=>{
+    let start=0
+    let end=str.length
+    if(str[0]==="'")start++
+    if(str[end-1]==="'")end--
+    return str.substring(start,end)
 	}
 	const dialog={
 		id:null,
@@ -204,5 +283,55 @@ export function Maker(){
 			dialog.getDialog().addEventListener("contextmenu",e=>e.preventDefault())
 		},
 		getDialog:_=>document.getElementById(dialog.id),
+	}
+}
+export function CanvasHandler(){
+	const $=this
+	let ct,cv
+	let rowCount,colCount,cellH,cellW
+	$.initHover=_=>{
+		const hoverId=cv.id
+		document.body.addEventListener("mousemove",e=>{
+			if(e.target.id!==hoverId)return 
+			const x=parseInt(e.offsetX/cellW)
+			const y=parseInt(e.offsetY/cellH)
+			clearCanvas()
+			// if(x<0||y<0||x>colCount-1||y>rowCount-1)return 
+			drawAGrid({x,y,fg:"#f00"})
+		})
+		cv.addEventListener("mouseleave",e=>{
+			clearCanvas()
+		})
+	}
+	$.setCanvas=newCv=>{
+		cv=newCv
+		ct=cv.getContext("2d")
+	}
+	$.drawGrids=params=>{
+		const{grids,fg="#000"}=params
+		rowCount=grids.length
+		colCount=grids[0].length
+		cellH=cv.height/rowCount 
+		cellW=cv.width/colCount
+		for(let y=0;y<rowCount;y++){
+			for(let x=0;x<colCount;x++){
+				drawAGrid({x,y,fg})
+			}
+		}
+	}
+	$.addHoverGrid=params=>{
+		
+	}
+	$.addHoverCross=params=>{
+
+	}
+	const clearCanvas=_=>ct.clearRect(0,0,cv.width,cv.height)
+	const drawAGrid=params=>{
+		const{x,y,fg}=params
+		ct.beginPath()
+		ct.rect(x*cellW,y*cellH,cellW,cellH)
+		ct.strokeStyle=fg
+		ct.stroke()
+		ct.closePath()
 	}
 }
