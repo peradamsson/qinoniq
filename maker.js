@@ -1,6 +1,3 @@
-// TODO lift out dialog from maker
-// TODO make sure body mousemove event doesn't duplicate
-
 export function Maker(){
 	const $=this 
 	let currentOwner=document.body // Initial owner
@@ -190,13 +187,6 @@ export function Maker(){
 		})
 		return div
 	}
-	$.showDialog=params=>{
-		return dialog.show(params)
-	}
-	$.closeDialog=_=>{
-		dialog.getDialog().style.display="none"
-		dialog.getDialog().close(dialog.id)
-	}
 	const isTwoIntsSeparatedByX=(str)=>{
 		const parts = str.split("x")
 		if (parts.length !== 2) return false
@@ -235,103 +225,203 @@ export function Maker(){
     if(str[end-1]==="'")end--
     return str.substring(start,end)
 	}
-	const dialog={
-		id:null,
-		clickedButton:null,
-		show:params=>{
-			const{rows=[],btns={},afterSpawn}=params
-			document.getElementById(dialog.id)?.remove()	
-			dialog.id="dialogId_"+crypto.randomUUID()
-			$.createCol({owner:document.body,id:dialog.id,tagName:"dialog"})
-			rows.forEach(row=>{
-				$.own(dialog.getDialog())
-				$.create(row)
-			})
-			dialog.addButtons(btns)
-			if(afterSpawn)afterSpawn()
-			dialog.preventContextMenu()
-			return new Promise((resolve)=>{
-				dialog.getDialog().showModal()
-				dialog.getDialog().addEventListener("close",e=>{
-					const inputElements=dialog.getDialog().querySelectorAll(`INPUT,SELECT`)
-					const inputData=[...inputElements].map(elm=>{
-						const trimmed=elm.value?.trim()??''
-						const num=parseFloat(trimmed)					
-						return { // Return value as number if value is numeric
-							id:elm.id,
-							value:trimmed===''?'':(isNaN(num)?trimmed:num)
-						}
-					})
-					resolve({
-						clickedButton:dialog.clickedButton,
-						inputData,
-					})
-				},{once:true})
-			})
-		},
-		addButtons:btns=>{
-			$.create({owner:dialog.getDialog(),id:"dialogButtons",cl:"flexRow"})
-			$.own(dialogButtons)
-			for(let key in btns){
-				const btn=$.create({text:key,cl:"btn",onmouseup:btns[key]})
-				btn.addEventListener("click",e=>{
-					dialog.clickedButton=key
-				})
-			}
-		},
-		preventContextMenu:_=>{
-			dialog.getDialog().addEventListener("contextmenu",e=>e.preventDefault())
-		},
-		getDialog:_=>document.getElementById(dialog.id),
+}
+export function DialogHandler(maker){
+	const{own,create,createCol}=maker
+	const $=this
+	let id,clickedButton
+	$.closeDialog=_=>{
+		getDialog().style.display="none"
+		getDialog().close(id)
 	}
+	$.showDialog=params=>{
+		const{rows=[],btns={},afterSpawn}=params
+		document.getElementById(id)?.remove()	
+		id="dialogId_"+crypto.randomUUID()
+		createCol({owner:document.body,id,tagName:"dialog"})
+		rows.forEach(row=>{
+			own(getDialog())
+			create(row)
+		})
+		addButtons(btns)
+		if(afterSpawn)afterSpawn()
+		preventContextMenu()
+		return new Promise((resolve)=>{
+			getDialog().showModal()
+			getDialog().addEventListener("close",e=>{
+				const inputElements=getDialog().querySelectorAll(`INPUT,SELECT`)
+				const inputData=[...inputElements].map(elm=>{
+					const trimmed=elm.value?.trim()??''
+					const num=parseFloat(trimmed)					
+					return { // Return value as number if value is numeric
+						id:elm.id,
+						value:trimmed===''?'':(isNaN(num)?trimmed:num)
+					}
+				})
+				resolve({id,inputData,clickedButton})
+			},{once:true})
+		})
+	}
+	const addButtons=btns=>{
+		create({owner:getDialog(),id:"dialogButtons",cl:"flexRow"})
+		own(dialogButtons)
+		for(let key in btns){
+			const btn=create({text:key,cl:"btn",onmouseup:btns[key]})
+			btn.addEventListener("click",e=>{
+				clickedButton=key
+			})
+		}
+	}
+	const preventContextMenu=_=>{
+		getDialog().addEventListener("contextmenu",e=>e.preventDefault())
+	}
+	const getDialog=_=>document.getElementById(id)
 }
 export function CanvasHandler(){
 	const $=this
-	let ct,cv
-	let rowCount,colCount,cellH,cellW
-	$.initHover=_=>{
-		const hoverId=cv.id
-		document.body.addEventListener("mousemove",e=>{
-			if(e.target.id!==hoverId)return 
-			const x=parseInt(e.offsetX/cellW)
-			const y=parseInt(e.offsetY/cellH)
-			clearCanvas()
-			// if(x<0||y<0||x>colCount-1||y>rowCount-1)return 
-			drawAGrid({x,y,fg:"#f00"})
+	let rowCount,colCount,hoverCanvas,editCanvas,hoverType // are set in initCanvasHandler
+	let currentCanvas,currentContext
+	let lastX,lastY,gridH,gridW
+	let editArr=[]
+	$.setCurrentCanvas=cv=>setCurrent(cv)
+	$.initCanvasHandler=params=>{
+		({rowCount,colCount,hoverCanvas,editCanvas,hoverType}=params)
+		const{onhover,onmouseup}=params
+		const canvasDiv=hoverCanvas.parentElement 
+		const canvases=canvasDiv.querySelectorAll(`canvas`)
+		;[...canvases].forEach(cv=>{
+			cv.style.pointerEvents=(cv===hoverCanvas)?"auto":"none"
 		})
-		cv.addEventListener("mouseleave",e=>{
+		gridH=hoverCanvas.height/rowCount 
+		gridW=hoverCanvas.width/colCount
+		// TODO Split setupEvent into one function per event...
+		setupEvents(onhover,onmouseup)
+	}
+  const setupEvents=(onhover,onmouseup)=>{
+		const mousemoveHandler=e=>{
+			if(e.target!==hoverCanvas)return 
+			const{x,y}=(_=>{
+				const res={}
+				if(hoverType==="grid"){
+					res.x=parseInt(e.offsetX/gridW)
+					res.y=parseInt(e.offsetY/gridH)
+				}
+				if(hoverType==="cross"){
+					res.x=parseInt((e.offsetX+gridW/2)/gridW)
+					res.y=parseInt((e.offsetY+gridH/2)/gridH)
+				}
+				return res
+			})()
+			if(x===lastX&&y===lastY)return
+			lastX=x 
+			lastY=y
+			setCurrent(hoverCanvas)
 			clearCanvas()
+			if(hoverType==="grid")drawGrid({x,y,fg:"#f00"})
+			if(hoverType==="cross")drawIntersection({x,y,bg:"#f00"})
+			if(onhover)onhover({x,y})
+			}
+		document.body.removeEventListener("mousemove",mousemoveHandler)
+		document.body.addEventListener("mousemove",mousemoveHandler)
+		hoverCanvas.addEventListener("mouseup",e=>{
+			if(!onmouseup)return
+			const{button,shiftKey,ctrlKey,altKey}=e
+			onmouseup({x:lastX,y:lastY,button,shiftKey,ctrlKey,altKey})
+		})
+		hoverCanvas.addEventListener("mouseleave",e=>{
+			setCurrent(hoverCanvas)
+			clearCanvas()
+			lastX=undefined
+			lastY=undefined
 		})
 	}
-	$.setCanvas=newCv=>{
-		cv=newCv
-		ct=cv.getContext("2d")
+	const setCurrent=cv=>{
+		currentCanvas=cv 
+		currentContext=cv.getContext("2d")
+	}
+	$.setEditCanvas=cv=>editCanvas=cv
+	$.initCanvasHandlerEvents=params=>{
+		const{onhover,onmouseup}=params
 	}
 	$.drawGrids=params=>{
-		const{grids,fg="#000"}=params
-		rowCount=grids.length
-		colCount=grids[0].length
-		cellH=cv.height/rowCount 
-		cellW=cv.width/colCount
+		const{fg="#000"}=params
 		for(let y=0;y<rowCount;y++){
 			for(let x=0;x<colCount;x++){
-				drawAGrid({x,y,fg})
+				drawGrid({x,y,fg})
 			}
 		}
 	}
-	$.addHoverGrid=params=>{
-		
+	$.drawEdits=cv=>{
+		setCurrent(editCanvas)
+		clearCanvas()
+		if(hoverType==="grid")editArr.forEach(drawGrid)
+		if(hoverType==="cross")editArr.forEach(drawIntersection)
+		if(hoverType==="cross")drawVectors()
 	}
-	$.addHoverCross=params=>{
-
+	$.addEdit=params=>{
+		const editIndex=getEditIndex(params)
+		const editExists=editIndex>-1
+		if( editExists)editArr[editIndex]=params
+		if(!editExists)editArr.push(params)
+		$.drawEdits()
 	}
-	const clearCanvas=_=>ct.clearRect(0,0,cv.width,cv.height)
-	const drawAGrid=params=>{
-		const{x,y,fg}=params
+	$.ripEdit=params=>{
+		const editIndex=getEditIndex(params)
+		if(editIndex===-1)return
+		editArr.splice(editIndex,1)
+		$.drawEdits()
+	}
+	$.clearEditCanvas=_=>{
+		setCurrent(editCanvas)
+		clearCanvas()
+		editArr=[]
+	}
+	const getEditIndex=params=>editArr.findIndex(ed=>ed.x===params.x&&ed.y===params.y)
+	const clearCanvas=_=>currentContext.clearRect(0,0,currentCanvas.width,currentCanvas.height)
+	const drawGrid=params=>{
+		const{x,y,fg,bg}=params
+		const ct=currentContext
 		ct.beginPath()
-		ct.rect(x*cellW,y*cellH,cellW,cellH)
+		ct.rect(x*gridW,y*gridH,gridW,gridH)
 		ct.strokeStyle=fg
-		ct.stroke()
+		ct.fillStyle=bg
+		if(fg)ct.stroke()
+		if(bg)ct.fill()
 		ct.closePath()
+	}
+	const drawIntersection=params=>{
+		const{x,y,fg,bg}=params
+		const ct=currentContext
+		ct.beginPath()
+		ct.arc(x*gridW,y*gridH,3,0,Math.PI*2)
+		ct.strokeStyle=fg
+		ct.fillStyle=bg
+		if(fg)ct.stroke()
+		if(bg)ct.fill()
+		ct.closePath()
+	}
+	const drawVectors=_=>{
+		for(let i=1;i<editArr.length;i++){
+			const{x:x1,y:y1}=editArr[i-1]
+			const{x:x2,y:y2}=editArr[i]
+			const ct=currentContext
+			const px1=x1*gridW,py1=y1*gridH
+			const px2=x2*gridW,py2=y2*gridH
+			const theta=Math.atan2(py2-py1,px2-px1)
+			const headlen=8 // arrow wing length (px) 
+			const angle=Math.PI/6 // arrow spread (~30°)
+			ct.strokeStyle="#888"
+			// Vector
+			ct.beginPath()
+			ct.moveTo(px1,py1)
+			ct.lineTo(px2,py2)
+			ct.stroke()
+			// Arrow
+			ct.beginPath()
+			ct.moveTo(px2-headlen*Math.cos(theta-angle),py2-headlen*Math.sin(theta-angle))
+			ct.lineTo(px2, py2)
+			ct.lineTo(px2-headlen*Math.cos(theta+angle),py2-headlen*Math.sin(theta+angle))
+			ct.stroke()
+		}
 	}
 }
