@@ -77,16 +77,17 @@ export function Maker(){
 			const{type="text",value="",accept,settings}=input
 			div.type=type
 			if(type==="checkbox")div.checked=value
-			if(type==="text")div.value=value
+			else if(type!=="file")div.value=value // file inputs can't be given a value
 			if(type==="file"){
 				if(accept)div.accept=accept
 			}
 			if(type==="range"){
-				if(Array.isArray(settings)&&settings.length>1){
+				if(Array.isArray(settings)){
 					const[startValue,min,max]=settings
-					div.value=startValue
-					div.min=min
-					div.max=max
+					// min/max first, otherwise the browser clamps value to the default 0-100 range
+					if(min!==undefined)div.min=min
+					if(max!==undefined)div.max=max
+					if(startValue!==undefined)div.value=startValue
 				}
 			}
 		}
@@ -101,7 +102,7 @@ export function Maker(){
 				elOption.textContent=option
 				div.appendChild(elOption)
 			})
-			div.value=value
+			if(value!==undefined)div.value=value // otherwise keep the browser default (first option)
 			if(disabled)div.disabled=true
 		}
 		if(style)div.style=style //Specific .style further down will override this...
@@ -122,7 +123,9 @@ export function Maker(){
 		if(height!==undefined)div.style.height=height+"px"
 		if(transform)div.style.transform=transform
 		if(draggable)div.draggable=1
-		div.style.display="flex"
+		// <dialog> is hidden by the browser while closed; an inline display would make it visible.
+		// DialogHandler sets display:flex on open and removes it on close.
+		if(tagName!=="dialog")div.style.display="flex"
 		const parsedFlexDirecton=flexDirection==="col"?"column":flexDirection
 		div.style.flexDirection=parsedFlexDirecton
 		if(caption){
@@ -231,13 +234,13 @@ export function DialogHandler(maker){
 	const $=this
 	let id,clickedButton
 	$.closeDialog=_=>{
-		getDialog().style.display="none"
-		getDialog().close(id)
+		getDialog().close()
 	}
 	$.showDialog=params=>{
 		const{rows=[],btns={},afterSpawn}=params
-		document.getElementById(id)?.remove()	
+		document.getElementById(id)?.remove()
 		id="dialogId_"+crypto.randomUUID()
+		clickedButton=undefined // Escape closes without a button
 		createCol({owner:document.body,id,tagName:"dialog"})
 		rows.forEach(row=>{
 			own(getDialog())
@@ -248,9 +251,12 @@ export function DialogHandler(maker){
 		preventContextMenu()
 		return new Promise((resolve)=>{
 			getDialog().showModal()
+			getDialog().style.display="flex"
 			getDialog().addEventListener("close",e=>{
+				getDialog().style.display="" // let the browser hide the closed dialog
 				const inputElements=getDialog().querySelectorAll(`INPUT,SELECT`)
 				const inputData=[...inputElements].map(elm=>{
+					if(elm.type==="checkbox")return{id:elm.id,value:elm.checked}
 					const trimmed=elm.value?.trim()??''
 					const num=parseFloat(trimmed)					
 					return { // Return value as number if value is numeric
@@ -266,10 +272,10 @@ export function DialogHandler(maker){
 		create({owner:getDialog(),id:"dialogButtons",cl:"flexRow"})
 		own(dialogButtons)
 		for(let key in btns){
-			const btn=create({text:key,cl:"btn",onmouseup:btns[key]})
-			btn.addEventListener("click",e=>{
-				clickedButton=key
-			})
+			create({text:key,cl:"btn",onmouseup:e=>{
+				clickedButton=key // set before the handler runs, since it usually closes the dialog
+				btns[key](e)
+			}})
 		}
 	}
 	const preventContextMenu=_=>{
@@ -283,6 +289,7 @@ export function CanvasHandler(){
 	let currentCanvas,currentContext
 	let lastX,lastY,gridH,gridW
 	let editArr=[]
+	let mousemoveHandler // kept so it can be removed when the handler is set up again
 	$.setCurrentCanvas=cv=>setCurrent(cv)
 	$.initCanvasHandler=params=>{
 		({rowCount,colCount,hoverCanvas,editCanvas,hoverType}=params)
@@ -298,7 +305,10 @@ export function CanvasHandler(){
 		setupEvents(onhover,onmouseup)
 	}
   const setupEvents=(onhover,onmouseup)=>{
-		const mousemoveHandler=e=>{
+		document.body.removeEventListener("mousemove",mousemoveHandler)
+		lastX=undefined
+		lastY=undefined
+		mousemoveHandler=e=>{
 			if(e.target!==hoverCanvas)return 
 			const{x,y}=(_=>{
 				const res={}
@@ -320,8 +330,7 @@ export function CanvasHandler(){
 			if(hoverType==="grid")drawGrid({x,y,fg:"#f00"})
 			if(hoverType==="cross")drawIntersection({x,y,bg:"#f00"})
 			if(onhover)onhover({x,y})
-			}
-		document.body.removeEventListener("mousemove",mousemoveHandler)
+		}
 		document.body.addEventListener("mousemove",mousemoveHandler)
 		hoverCanvas.addEventListener("mouseup",e=>{
 			if(!onmouseup)return
