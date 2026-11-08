@@ -411,13 +411,11 @@ export function CanvasHandler(){
 			const headlen=8 // arrow wing length (px) 
 			const angle=Math.PI/6 // arrow spread (~30°)
 			ct.strokeStyle="#888"
-			// Vector
-			ct.beginPath()
+			ct.beginPath() // Vector
 			ct.moveTo(px1,py1)
 			ct.lineTo(px2,py2)
 			ct.stroke()
-			// Arrow
-			ct.beginPath()
+			ct.beginPath() // Arrow
 			ct.moveTo(px2-headlen*Math.cos(theta-angle),py2-headlen*Math.sin(theta-angle))
 			ct.lineTo(px2, py2)
 			ct.lineTo(px2-headlen*Math.cos(theta+angle),py2-headlen*Math.sin(theta+angle))
