@@ -46,13 +46,13 @@ export function Maker(){
 		const {style,draggable,contentEditable}=params
 		const {onmouseup,onkeyup,onkeydown,oninput,onchange}=params
 		const {caption}=params
-		if(sh){ // shorthand string, example: "col <div> #id .class1 .class2 200x20 fg#f00 bg#fff $Text"
+		if(sh){ // shorthand string, example: "col <div> #id .class1 .class2 200x20 fg#f00 bg#fff 'Text'"
 			const shArr=splitWithQuotes(sh)
 			let arrClasses=[]
 			shArr.forEach(shVal=>{
 				if(shVal.startsWith("#"))id=shVal.substring(1) // if multiple, last will be used
 				if(shVal.startsWith("."))arrClasses.push(shVal)
-				if(isTwoIntsSeparatedByX(shVal))[width,height]=shVal.split("x");
+				if(isIntPairSeparatedByX(shVal))[width,height]=shVal.split("x");
 				if(shVal.startsWith("fg"))fg=shVal.substring(2)
 				if(shVal.startsWith("bg"))bg=shVal.substring(2)
 				if(shVal.startsWith("'")&&shVal.endsWith("'"))text=shVal.substring(1,shVal.length-1)
@@ -77,18 +77,17 @@ export function Maker(){
 			const{type="text",value="",accept,settings}=input
 			div.type=type
 			if(type==="checkbox")div.checked=value
-			else if(type!=="file")div.value=value // file inputs can't be given a value
-			if(type==="file"){
-				if(accept)div.accept=accept
-			}
+			if(type==="text")div.value=value 
 			if(type==="range"){
 				if(Array.isArray(settings)){
 					const[startValue,min,max]=settings
-					// min/max first, otherwise the browser clamps value to the default 0-100 range
 					if(min!==undefined)div.min=min
 					if(max!==undefined)div.max=max
 					if(startValue!==undefined)div.value=startValue
 				}
+			}
+			if(type==="file"){
+				if(accept)div.accept=accept
 			}
 		}
 		if(select){
@@ -102,7 +101,7 @@ export function Maker(){
 				elOption.textContent=option
 				div.appendChild(elOption)
 			})
-			if(value!==undefined)div.value=value // otherwise keep the browser default (first option)
+			div.value=value
 			if(disabled)div.disabled=true
 		}
 		if(style)div.style=style //Specific .style further down will override this...
@@ -111,7 +110,7 @@ export function Maker(){
 		if(id)div.id=id
 		if(cl)cl.trim().split(" ").forEach(clName=>div.classList.add(clName))
 		if(text)div.textContent=text
-		if(html)div.innerHTML=html
+		if(html)div.innerHTML=html // security issue if user input is allowed
 		if(onmouseup)div.addEventListener("contextmenu",e=>e.preventDefault())
 		if(onmouseup)div.addEventListener("mouseup",onmouseup)
 		if(oninput)div.addEventListener("input",oninput)
@@ -123,9 +122,7 @@ export function Maker(){
 		if(height!==undefined)div.style.height=height+"px"
 		if(transform)div.style.transform=transform
 		if(draggable)div.draggable=1
-		// <dialog> is hidden by the browser while closed; an inline display would make it visible.
-		// DialogHandler sets display:flex on open and removes it on close.
-		if(tagName!=="dialog")div.style.display="flex"
+		if(tagName!=="dialog")div.style.display="flex" // Dialog do not handle flex well
 		const parsedFlexDirecton=flexDirection==="col"?"column":flexDirection
 		div.style.flexDirection=parsedFlexDirecton
 		if(caption){
@@ -190,7 +187,7 @@ export function Maker(){
 		})
 		return div
 	}
-	const isTwoIntsSeparatedByX=(str)=>{
+	const isIntPairSeparatedByX=(str)=>{
 		const parts = str.split("x")
 		if (parts.length !== 2) return false
 		const isIntString = s =>
@@ -289,11 +286,11 @@ export function CanvasHandler(){
 	let currentCanvas,currentContext
 	let lastX,lastY,gridH,gridW
 	let editArr=[]
-	let mousemoveHandler // kept so it can be removed when the handler is set up again
+	let onhover
 	$.setCurrentCanvas=cv=>setCurrent(cv)
 	$.initCanvasHandler=params=>{
-		({rowCount,colCount,hoverCanvas,editCanvas,hoverType}=params)
-		const{onhover,onmouseup}=params
+		({rowCount,colCount,hoverCanvas,editCanvas,hoverType,onhover}=params)
+		const{onmouseup}=params
 		const canvasDiv=hoverCanvas.parentElement 
 		const canvases=canvasDiv.querySelectorAll(`canvas`)
 		;[...canvases].forEach(cv=>{
@@ -302,35 +299,35 @@ export function CanvasHandler(){
 		gridH=hoverCanvas.height/rowCount 
 		gridW=hoverCanvas.width/colCount
 		// TODO Split setupEvent into one function per event...
-		setupEvents(onhover,onmouseup)
+		setupEvents(onmouseup)
 	}
-  const setupEvents=(onhover,onmouseup)=>{
+	const mousemoveHandler=e=>{
+		if(e.target!==hoverCanvas)return 
+		const{x,y}=(_=>{
+			const res={}
+			if(hoverType==="grid"){
+				res.x=parseInt(e.offsetX/gridW)
+				res.y=parseInt(e.offsetY/gridH)
+			}
+			if(hoverType==="cross"){
+				res.x=parseInt((e.offsetX+gridW/2)/gridW)
+				res.y=parseInt((e.offsetY+gridH/2)/gridH)
+			}
+			return res
+		})()
+		if(x===lastX&&y===lastY)return
+		lastX=x 
+		lastY=y
+		setCurrent(hoverCanvas)
+		clearCanvas()
+		if(hoverType==="grid")drawGrid({x,y,fg:"#f00"})
+		if(hoverType==="cross")drawIntersection({x,y,bg:"#f00"})
+		if(onhover)onhover({x,y})
+	}
+	const setupEvents=(onmouseup)=>{
 		document.body.removeEventListener("mousemove",mousemoveHandler)
 		lastX=undefined
 		lastY=undefined
-		mousemoveHandler=e=>{
-			if(e.target!==hoverCanvas)return 
-			const{x,y}=(_=>{
-				const res={}
-				if(hoverType==="grid"){
-					res.x=parseInt(e.offsetX/gridW)
-					res.y=parseInt(e.offsetY/gridH)
-				}
-				if(hoverType==="cross"){
-					res.x=parseInt((e.offsetX+gridW/2)/gridW)
-					res.y=parseInt((e.offsetY+gridH/2)/gridH)
-				}
-				return res
-			})()
-			if(x===lastX&&y===lastY)return
-			lastX=x 
-			lastY=y
-			setCurrent(hoverCanvas)
-			clearCanvas()
-			if(hoverType==="grid")drawGrid({x,y,fg:"#f00"})
-			if(hoverType==="cross")drawIntersection({x,y,bg:"#f00"})
-			if(onhover)onhover({x,y})
-		}
 		document.body.addEventListener("mousemove",mousemoveHandler)
 		hoverCanvas.addEventListener("mouseup",e=>{
 			if(!onmouseup)return

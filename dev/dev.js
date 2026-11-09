@@ -24,7 +24,7 @@ function App(){
   }=new CanvasHandler
     const{showDialog,closeDialog}=new DialogHandler(maker)
   const $=this
-  $.init=async _=>{
+  $.init=_=>{
     create(`boilerplate ${appName} '${copyright}'`)
     btnPanel1Handler.render(create({owner:main,id:"btnPanel1",cl:"panel"}))
   }
